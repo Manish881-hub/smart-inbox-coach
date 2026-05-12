@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Inbox Coach — AI Email Triage</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+
+  <header class="border-b border-zinc-800/80 backdrop-blur sticky top-0 bg-zinc-950/70 z-10">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 grid place-items-center font-bold">SC</div>
+        <div>
+          <h1 class="text-lg font-semibold leading-tight">Smart Inbox Coach</h1>
+          <p class="text-xs text-zinc-400 leading-tight">AI-assisted email triage for small teams</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="settingsBtn" class="text-xs px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">⚙️ AI Settings</button>
+        <a href="README.md" class="text-xs px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">📄 README</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-10">
+
+    <section class="mb-8">
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Triage any email in seconds.</h2>
+      <p class="text-zinc-400 mt-2 max-w-2xl">
+        Paste an email. Get priority, intent, risk, recommended SLA, reasoning signals, and a ready-to-send draft.
+        Classification is <span class="text-indigo-300">deterministic and explainable</span>; the LLM is only used to polish tone.
+      </p>
+    </section>
+
+    <!-- Input card -->
+    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3">
+        <label class="text-sm text-zinc-400">Incoming email</label>
+        <div class="flex items-center gap-2">
+          <select id="sampleSelect" class="text-xs bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5">
+            <option value="">Load sample…</option>
+            <option value="complaint">Angry customer / refund</option>
+            <option value="support">Bug report</option>
+            <option value="sales">Sales / pricing</option>
+            <option value="meeting">Meeting request</option>
+            <option value="payment">Invoice / payment</option>
+            <option value="legal">Legal threat</option>
+          </select>
+          <button id="clearBtn" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">Clear</button>
+        </div>
+      </div>
+      <textarea id="emailInput"
+        placeholder="Subject: ...&#10;&#10;Hi team, ..."
+        class="w-full h-48 p-4 rounded-xl bg-zinc-950 border border-zinc-800 outline-none focus:border-indigo-500/60 text-sm resize-y"></textarea>
+
+      <div class="flex flex-wrap items-center gap-3 mt-4">
+        <button id="analyzeBtn"
+          class="bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white px-5 py-2.5 rounded-xl font-semibold hover:opacity-95 active:scale-[0.98] transition">
+          ⚡ Analyze Email
+        </button>
+
+        <div class="flex items-center gap-2 ml-auto text-xs text-zinc-400">
+          <span>Reply tone:</span>
+          <select id="toneSelect" class="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5">
+            <option value="professional">Professional</option>
+            <option value="empathetic">Empathetic</option>
+            <option value="concise">Concise</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="resultsWrap" class="mt-8 hidden">
+      <!-- KPI strip -->
+      <div id="kpiStrip" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+
+      <!-- Detail grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+        <div class="lg:col-span-2 space-y-5">
+          <div id="explainCard" class="card"></div>
+          <div id="replyCard" class="card"></div>
+        </div>
+        <div class="space-y-5">
+          <div id="actionCard" class="card"></div>
+          <div id="scoresCard" class="card"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section class="mt-12">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm uppercase tracking-wider text-zinc-400">Recent triage</h3>
+        <button id="clearHistoryBtn" class="text-xs text-zinc-500 hover:text-zinc-300">Clear history</button>
+      </div>
+      <div id="historyList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </section>
+
+    <footer class="mt-16 text-center text-xs text-zinc-500">
+      Built for the SA Intellect Solutions take-home assignment ·
+      Rule-based classification + optional LLM polish · v1.0
+    </footer>
+  </main>
+
+  <!-- Settings modal -->
+  <div id="settingsModal" class="hidden fixed inset-0 bg-black/70 z-20 grid place-items-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+      <h3 class="font-semibold mb-2">AI Refinement (optional)</h3>
+      <p class="text-xs text-zinc-400 mb-4">
+        Paste a Gemini API key to enable "Refine with AI". It's stored only in your browser (localStorage).
+        Without a key, the app still works fully using the deterministic engine.
+      </p>
+      <input id="apiKeyInput" type="password" placeholder="AIza..." class="w-full p-3 rounded-lg bg-zinc-950 border border-zinc-800 outline-none text-sm" />
+      <div class="flex justify-end gap-2 mt-4">
+        <button id="closeSettings" class="text-xs px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700">Cancel</button>
+        <button id="saveSettings" class="text-xs px-3 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
