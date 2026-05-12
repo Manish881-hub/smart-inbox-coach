@@ -1,6 +1,7 @@
 /* =========================================================
    Smart Inbox Coach — script.js
    Deterministic rule engine + optional LLM polish.
+   Enterprise SaaS UI/UX Edition
    ========================================================= */
 
 /* -------------------- DOM refs -------------------- */
@@ -11,12 +12,35 @@ const clearBtn     = $("clearBtn");
 const sampleSelect = $("sampleSelect");
 const toneSelect   = $("toneSelect");
 const resultsWrap  = $("resultsWrap");
-const kpiStrip     = $("kpiStrip");
-const explainCard  = $("explainCard");
-const replyCard    = $("replyCard");
-const actionCard   = $("actionCard");
-const scoresCard   = $("scoresCard");
-const historyList  = $("historyList");
+
+/* ---- Pipeline Refs ---- */
+const pipelineWrap       = $("pipelineWrap");
+const pipelineStatusText = $("pipelineStatusText");
+const pipelineProgress   = $("pipelineProgress");
+const nodes = [
+  $("node-input"), $("node-intent"), $("node-risk"), $("node-sla"), $("node-draft")
+];
+
+/* ---- Result Refs ---- */
+const confidenceVal = $("confidenceVal");
+const confidenceBar = $("confidenceBar");
+
+const kpiPriority = $("kpiPriority");
+const kpiRisk     = $("kpiRisk");
+const kpiIntent   = $("kpiIntent");
+
+const slaText       = $("slaText");
+const sentimentText = $("sentimentText");
+const actionText    = $("actionText");
+
+const replyBadge = $("replyBadge");
+const replyBox   = $("replyBox");
+
+const signalsContainer      = $("signalsContainer");
+const intentScoresContainer = $("intentScoresContainer");
+const urgencyScoreText      = $("urgencyScoreText");
+const riskScoreText         = $("riskScoreText");
+const emailPreviewBox       = $("emailPreviewBox");
 
 /* -------------------- Toast notifications -------------------- */
 function showToast(msg, type = "info") {
@@ -45,10 +69,7 @@ saveSettings.onclick  = () => {
   showToast("API key saved!", "success");
 };
 
-/* -------------------- Load Gemini key from .gemini.env -------------------- */
-// Falls back to localStorage if fetch fails (e.g. file:// protocol with no server).
 async function loadGeminiKey() {
-  // 1. Prefer the env file (served via HTTP) — keeps key out of source code.
   try {
     const res = await fetch("/.gemini.env");
     if (res.ok) {
@@ -56,19 +77,11 @@ async function loadGeminiKey() {
       const match = text.match(/GEMINI_API_KEY=(.*)/);
       if (match) return match[1].trim();
     }
-  } catch (_) { /* not served via HTTP — fall through */ }
-
-  // 2. Fall back to the manually saved localStorage key.
-  const stored = localStorage.getItem("gemini_key");
-  if (stored) return stored;
-
-  return null;
+  } catch (_) { }
+  return localStorage.getItem("gemini_key") || null;
 }
 
-/* -------------------- Lexicons (weighted) --------------------
-   Weights are deliberate: "refund" matters more than "help".
-   This is the core design choice that makes the system "smart".
-*/
+/* -------------------- Lexicons -------------------- */
 const INTENT_LEXICON = {
   support:   [["bug",3],["error",3],["not working",3],["broken",3],["issue",2],["problem",2],["crash",3],["help",1],["stuck",2],["fix",2]],
   sales:     [["pricing",3],["quote",3],["demo",3],["purchase",3],["buy",2],["plan",1],["upgrade",2],["trial",2],["interested in",2]],
@@ -111,12 +124,11 @@ sampleSelect.onchange = () => {
 clearBtn.onclick = () => {
   emailInput.value = "";
   resultsWrap.classList.add("hidden");
-  showToast("Cleared.", "info");
+  pipelineWrap.classList.add("hidden");
 };
 
 /* -------------------- Core engine -------------------- */
 
-// Word-boundary safe matcher; counts occurrences for scoring.
 function countMatches(text, phrase) {
   const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re  = new RegExp(`(^|\\b|\\s)${esc}(\\b|\\s|$)`, "gi");
@@ -136,7 +148,6 @@ function scoreCategory(text, lexicon) {
   return { score, hits };
 }
 
-// Softmax-style normalization → makes the confidence feel like ML.
 function normalize(scores) {
   const total = Object.values(scores).reduce((a, b) => a + b, 0);
   if (total === 0) return null;
@@ -148,7 +159,6 @@ function normalize(scores) {
 function analyze(rawText) {
   const text = (rawText || "").toLowerCase();
 
-  // 1) Intent scoring per category
   const perCategory = {};
   const perCategoryHits = {};
   for (const intent in INTENT_LEXICON) {
@@ -159,54 +169,42 @@ function analyze(rawText) {
 
   const norm = normalize(perCategory);
   let topIntent = "general inquiry";
-  let confidence = 35; // baseline for "general"
+  let confidence = 35; 
   if (norm) {
     topIntent = Object.entries(norm).sort((a,b)=>b[1]-a[1])[0][0];
-    // Confidence: base 60 + share of top intent * 40, capped at 97
     confidence = Math.min(97, Math.round(60 + norm[topIntent] * 40));
-    if (perCategory[topIntent] < 2) confidence = Math.max(45, confidence - 15); // weak evidence penalty
+    if (perCategory[topIntent] < 2) confidence = Math.max(45, confidence - 15);
   }
 
-  // 2) Urgency
   const urgency = scoreCategory(text, URGENCY_WORDS);
   let priority = "Low";
   if (urgency.score >= 4) priority = "High";
   else if (urgency.score >= 2) priority = "Medium";
 
-  // 3) Risk
   const risk = scoreCategory(text, RISK_WORDS);
   let riskLevel = "Low";
   if (risk.score >= 5) riskLevel = "High";
   else if (risk.score >= 2) riskLevel = "Medium";
 
-  // 4) Sentiment proxy
   let pos = 0, neg = 0;
   for (const w of POSITIVE_WORDS) pos += countMatches(text, w);
   for (const w of NEGATIVE_WORDS) neg += countMatches(text, w);
-  const sentiment =
-    neg > pos + 1 ? "Negative" :
-    pos > neg + 1 ? "Positive" : "Neutral";
+  const sentiment = neg > pos + 1 ? "Negative" : pos > neg + 1 ? "Positive" : "Neutral";
 
-  // If sentiment strongly negative, escalate complaint signal even without keywords
   if (sentiment === "Negative" && topIntent === "general inquiry") {
     topIntent = "complaint";
     confidence = Math.max(confidence, 65);
   }
 
-  // 5) SLA matrix (priority × risk)
   const sla = recommendSLA(priority, riskLevel);
-
-  // 6) Next action
   const nextAction = recommendAction(topIntent, priority, riskLevel);
 
-  // 7) Reason signals (deduped, sorted by weight)
   const signals = [];
   (perCategoryHits[topIntent] || []).forEach(h => signals.push({ ...h, kind: "intent" }));
   urgency.hits.forEach(h => signals.push({ ...h, kind: "urgency" }));
   risk.hits.forEach(h => signals.push({ ...h, kind: "risk" }));
   signals.sort((a,b) => b.weight - a.weight);
 
-  // 8) Collect all matched phrases for auto-highlight
   const allMatchedPhrases = new Set();
   signals.forEach(s => allMatchedPhrases.add(s.phrase.toLowerCase()));
 
@@ -223,7 +221,7 @@ function analyze(rawText) {
 
 function recommendSLA(priority, risk) {
   if (priority === "High" || risk === "High") return "Within 1–2 hours";
-  if (priority === "Medium" || risk === "Medium") return "Within the same business day";
+  if (priority === "Medium" || risk === "Medium") return "Within same business day";
   return "Within 24 hours";
 }
 
@@ -238,7 +236,6 @@ function recommendAction(intent, priority, risk) {
   return "Respond normally with a confirmation and timeline.";
 }
 
-/* -------------------- Reply generator (template + tone) -------------------- */
 function generateReply(result) {
   const tone = toneSelect.value;
   const intent = result.topIntent;
@@ -273,305 +270,179 @@ function generateReply(result) {
   ].filter(Boolean).join("\n\n");
 }
 
-/* -------------------- Auto-highlight matched terms -------------------- */
-// Wraps matched phrases in <mark> tags in the email preview text.
 function highlightMatches(rawText, phrases) {
   if (!phrases || !phrases.length) return escapeHtml(rawText);
-
-  // Sort longest first to avoid partial overwrites
   const sorted = [...phrases].sort((a, b) => b.length - a.length);
-  // Build a single regex alternation
   const escaped = sorted.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = new RegExp(`(${escaped.join("|")})`, "gi");
   return escapeHtml(rawText).replace(re, `<mark class="hl">$1</mark>`);
 }
 
-/* -------------------- Rendering -------------------- */
-function badge(level) {
-  const cls = level.toLowerCase();
-  return `<span class="badge ${cls}">${level}</span>`;
+function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+
+function getValClass(level) {
+  if (level === "High") return "val-high";
+  if (level === "Medium") return "val-medium";
+  return "val-low";
 }
+
+/* -------------------- Rendering -------------------- */
 
 function render(result) {
   resultsWrap.classList.remove("hidden");
+  
+  // Confidence
+  confidenceVal.textContent = `${result.confidence}%`;
+  confidenceBar.style.width = `${result.confidence}%`;
 
-  // KPI strip
-  kpiStrip.innerHTML = `
-    <div class="kpi"><span class="label">Priority</span><span class="value">${badge(result.priority)}</span></div>
-    <div class="kpi"><span class="label">Intent</span><span class="value capitalize">${result.topIntent}</span></div>
-    <div class="kpi"><span class="label">Risk</span><span class="value">${badge(result.riskLevel)}</span></div>
-    <div class="kpi"><span class="label">Suggested SLA</span><span class="value text-base">${result.sla}</span></div>
-  `;
+  // KPIs
+  kpiPriority.className = `value mt-1 ${getValClass(result.priority)}`;
+  kpiPriority.textContent = result.priority;
+  kpiRisk.className = `value mt-1 ${getValClass(result.riskLevel)}`;
+  kpiRisk.textContent = result.riskLevel;
+  kpiIntent.textContent = result.topIntent;
 
-  // Action card
-  actionCard.innerHTML = `
-    <h4>Suggested next action</h4>
-    <p class="text-sm leading-relaxed">${result.nextAction}</p>
-    <div class="mt-4 text-xs text-zinc-400">Sentiment: <span class="text-zinc-200">${result.sentiment}</span></div>
-  `;
+  // Middle
+  slaText.textContent = result.sla;
+  sentimentText.textContent = `Sentiment: ${result.sentiment}`;
+  actionText.textContent = result.nextAction;
 
-  // Explain card — this is the killer feature for interviewers
-  const signalChips = result.signals.length
-    ? result.signals.map(s =>
-        `<span class="signal" title="weight ${s.weight}, ${s.kind}">${escapeHtml(s.phrase)} <span class="text-zinc-500">·${s.weight}</span></span>`
-      ).join(" ")
-    : `<span class="text-zinc-500 text-sm">No strong signals — defaulting to general inquiry.</span>`;
+  // Draft
+  replyBadge.className = "badge deterministic-badge";
+  replyBadge.textContent = "Standard Template";
+  replyBox.innerHTML = escapeHtml(generateReply(result));
+  $("refineStatus").textContent = "";
 
-  // Auto-highlighted email preview
-  const highlightedEmail = highlightMatches(result.text, result.matchedPhrases);
+  // Explainability
+  signalsContainer.innerHTML = result.signals.length
+    ? result.signals.map(s => `<span class="signal">${escapeHtml(s.phrase)} <span>·${s.weight}</span></span>`).join(" ")
+    : `<span class="text-xs text-zinc-500">No strong signals — defaulting.</span>`;
 
-  explainCard.innerHTML = `
-    <h4>Why this verdict — reasoning signals</h4>
-    <div>${signalChips}</div>
-    <div class="mt-5">
-      <div class="flex items-center justify-between text-xs text-zinc-400 mb-1">
-        <span>Intent confidence</span><span>${result.confidence}%</span>
-      </div>
-      <div class="bar"><span style="width:${result.confidence}%"></span></div>
-    </div>
-    <details class="mt-4">
-      <summary class="text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 select-none">
-        🔍 Email preview with highlighted signals
-      </summary>
-      <div class="email-preview mt-2">${highlightedEmail}</div>
-    </details>
-    <p class="text-xs text-zinc-500 mt-4 leading-relaxed">
-      Classification uses a weighted keyword engine with word-boundary matching and softmax-style normalization
-      across intent categories. Urgency and risk are scored on independent lexicons so they can co-occur with any intent.
-    </p>
-  `;
-
-  // Scores breakdown
-  const breakdown = Object.entries(result.scores.intentScores)
+  intentScoresContainer.innerHTML = Object.entries(result.scores.intentScores)
     .sort((a,b)=>b[1]-a[1])
     .map(([k,v]) => {
       const pct = result.scores.normalized[k] ? Math.round(result.scores.normalized[k]*100) : 0;
       return `
-        <div class="mb-2">
-          <div class="flex justify-between text-xs"><span class="capitalize">${k}</span><span class="text-zinc-400">${v} pts · ${pct}%</span></div>
-          <div class="bar mt-1"><span style="width:${pct}%"></span></div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="w-16 text-xs capitalize text-zinc-400">${k}</span>
+          <div class="bar-wrap flex-1"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <span class="w-6 text-[10px] text-right text-zinc-500">${v}</span>
         </div>`;
     }).join("");
-  scoresCard.innerHTML = `
-    <h4>Intent score breakdown</h4>
-    ${breakdown}
-    <div class="text-xs text-zinc-500 mt-3">Urgency score: ${result.scores.urgency} · Risk score: ${result.scores.risk}</div>
-  `;
 
-  // Reply card — with skeleton loading area and progress bar
-  const draft = generateReply(result);
-  replyCard.innerHTML = `
-    <div class="flex items-center justify-between">
-      <h4 class="!mb-0">Suggested draft reply</h4>
-      <div class="flex gap-2">
-        <button id="copyReplyBtn" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700">📋 Copy</button>
-        <button id="refineBtn"    class="refine-btn text-xs px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400">✨ Refine with AI</button>
-      </div>
-    </div>
-    <div id="refineProgressWrap" class="hidden mt-3">
-      <div class="refine-progress-bar"><div id="refineProgress"></div></div>
-    </div>
-    <div id="replyBox" class="reply-box mt-3">${escapeHtml(draft)}</div>
-    <p id="refineStatus" class="text-xs text-zinc-500 mt-2"></p>
-  `;
+  urgencyScoreText.textContent = result.scores.urgency;
+  riskScoreText.textContent = result.scores.risk;
 
-  document.getElementById("copyReplyBtn").onclick = () => {
-    navigator.clipboard.writeText(document.getElementById("replyBox").innerText)
-      .then(() => {
-        document.getElementById("copyReplyBtn").innerText = "✅ Copied";
-        showToast("Reply copied to clipboard!", "success");
-        setTimeout(() => document.getElementById("copyReplyBtn").innerText = "📋 Copy", 1500);
-      })
-      .catch(() => showToast("Copy failed — try selecting manually.", "error"));
+  emailPreviewBox.innerHTML = highlightMatches(result.text, result.matchedPhrases);
+
+  // Bind Refine
+  $("copyReplyBtn").onclick = () => {
+    navigator.clipboard.writeText(replyBox.innerText)
+      .then(() => showToast("Reply copied to clipboard!", "success"))
+      .catch(() => showToast("Copy failed.", "error"));
   };
-  document.getElementById("refineBtn").onclick = () => refineWithAI(result);
-
-  saveToHistory(result);
-  renderHistory();
-  showToast("Email processed!", "success");
+  $("refineBtn").onclick = () => refineWithAI(result);
 }
 
-function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-
-/* -------------------- Skeleton loader helpers -------------------- */
-function showSkeleton() {
-  const box = document.getElementById("replyBox");
-  if (!box) return;
-  box.innerHTML = `
-    <div class="skeleton-line" style="width:80%"></div>
-    <div class="skeleton-line" style="width:65%; margin-top:10px"></div>
-    <div class="skeleton-line" style="width:72%; margin-top:10px"></div>
-    <div class="skeleton-line" style="width:55%; margin-top:10px"></div>
-  `;
-}
-
-function hideSkeleton(text) {
-  const box = document.getElementById("replyBox");
-  if (!box) return;
-  box.innerText = text;
-}
-
-/* -------------------- Progress bar helpers -------------------- */
-function startProgress() {
-  const wrap = document.getElementById("refineProgressWrap");
-  const bar  = document.getElementById("refineProgress");
-  if (!wrap || !bar) return;
-  wrap.classList.remove("hidden");
-  bar.style.width = "0%";
-  // Animate to 85% over 4 s; will snap to 100% on completion
-  let pct = 0;
-  const iv = setInterval(() => {
-    pct = Math.min(85, pct + Math.random() * 6 + 1);
-    bar.style.width = pct + "%";
-  }, 300);
-  bar._interval = iv;
-}
-
-function finishProgress() {
-  const wrap = document.getElementById("refineProgressWrap");
-  const bar  = document.getElementById("refineProgress");
-  if (!wrap || !bar) return;
-  clearInterval(bar._interval);
-  bar.style.width = "100%";
-  setTimeout(() => wrap.classList.add("hidden"), 600);
-}
-
-/* -------------------- LLM polish (optional) -------------------- */
+/* -------------------- LLM Polish -------------------- */
 async function refineWithAI(result) {
-  const status  = document.getElementById("refineStatus");
-  const btn     = document.getElementById("refineBtn");
-  if (!status || !btn) return;
+  const status = $("refineStatus");
+  const btn = $("refineBtn");
+  const wrap = $("refineProgressWrap");
+  const bar = $("refineProgress");
 
-  // Load key: env file → localStorage fallback
   const key = await loadGeminiKey();
-
   if (!key) {
-    status.innerHTML = `No Gemini key found. Open <b>⚙️ AI Settings</b> to add one, or serve via HTTP so /.gemini.env is reachable. The deterministic draft above is fully usable.`;
-    showToast("No Gemini key found.", "error");
+    showToast("No Gemini key found. Please configure in settings.", "error");
     return;
   }
 
-  // Visual feedback: disable button, show skeleton + progress bar
   btn.disabled = true;
-  btn.textContent = "⏳ Refining…";
-  showSkeleton();
-  startProgress();
-  status.textContent = "Contacting Gemini…";
+  wrap.classList.remove("hidden");
+  bar.style.width = "0%";
+  
+  let pct = 0;
+  const iv = setInterval(() => { pct = Math.min(85, pct + Math.random()*10); bar.style.width = `${pct}%`; }, 200);
 
-  const draft = result._lastDraft || document.getElementById("replyBox").innerText;
-  const prompt = `You are an assistant for a customer-support team. Rewrite the draft reply below to sound natural, warm, and professional. Keep it concise (max 6 sentences). Do NOT invent facts. Keep the same intent and commitments.\n\nOriginal email context (do not quote):\n${result.text}\n\nDraft reply to improve:\n${draft}\n\nReturn ONLY the improved reply text.`;
+  const draft = result._lastDraft || replyBox.innerText;
+  const prompt = `Rewrite this draft reply to sound natural, professional, and concise. Do NOT invent facts.\n\nOriginal email:\n${result.text}\n\nDraft:\n${draft}`;
 
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
     );
     const data = await res.json();
     const improved = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (improved) {
-      hideSkeleton(improved);
-      status.textContent = "✨ Refined with Gemini.";
-      showToast("Reply refined with Gemini!", "success");
-    } else {
-      hideSkeleton(draft);
-      status.textContent = "Gemini returned no content. Showing original draft.";
-      showToast("Gemini returned nothing — check your key.", "error");
+      replyBox.innerText = improved;
+      replyBadge.className = "badge ai-badge";
+      replyBadge.textContent = "AI-Enhanced Reply";
+      status.textContent = "✨ Refined with Gemini 1.5 Flash";
+      showToast("Reply refined with AI!", "success");
     }
   } catch (e) {
-    hideSkeleton(draft);
-    status.textContent = "AI refinement failed (network or key). Original draft is still valid.";
-    showToast("Refinement failed — see status below.", "error");
+    showToast("Refinement failed. Using deterministic draft.", "error");
   } finally {
-    finishProgress();
+    clearInterval(iv);
+    bar.style.width = "100%";
+    setTimeout(() => wrap.classList.add("hidden"), 500);
     btn.disabled = false;
-    btn.textContent = "✨ Refine with AI";
   }
 }
 
-/* -------------------- History (localStorage) -------------------- */
-const HISTORY_KEY = "sic_history";
+/* -------------------- Simulated Pipeline Animation -------------------- */
+async function runSimulatedPipeline(text) {
+  resultsWrap.classList.add("hidden");
+  pipelineWrap.classList.remove("hidden");
+  
+  const steps = [
+    { text: "Reading input...", width: "0%" },
+    { text: "Detecting semantic intent...", width: "25%" },
+    { text: "Scanning for legal/escalation risks...", width: "50%" },
+    { text: "Applying routing & SLA rules...", width: "75%" },
+    { text: "Formatting draft response...", width: "100%" }
+  ];
 
-function saveToHistory(result) {
-  const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-  arr.unshift({
-    ts: Date.now(),
-    snippet: (result.text || "").slice(0, 90),
-    priority: result.priority, intent: result.topIntent, risk: result.riskLevel,
-  });
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0, 12)));
+  nodes.forEach(n => { n.classList.remove("active", "done"); });
+  
+  for (let i = 0; i < steps.length; i++) {
+    pipelineStatusText.textContent = steps[i].text;
+    pipelineStatusText.classList.add("animate-pulse-glow");
+    pipelineProgress.style.width = steps[i].width;
+    
+    if (i > 0) nodes[i-1].classList.replace("active", "done");
+    nodes[i].classList.add("active");
+    
+    // Simulate processing time
+    await new Promise(r => setTimeout(r, 450)); 
+  }
+  
+  pipelineStatusText.classList.remove("animate-pulse-glow");
+  pipelineStatusText.textContent = "Analysis Complete";
+  nodes[4].classList.replace("active", "done");
+  
+  await new Promise(r => setTimeout(r, 300));
+  pipelineWrap.classList.add("hidden");
+  
+  const result = analyze(text);
+  render(result);
 }
 
-function renderHistory() {
-  const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-  if (!arr.length) { historyList.innerHTML = `<div class="text-xs text-zinc-500">No history yet — analyze your first email above.</div>`; return; }
-  historyList.innerHTML = arr.map(h => `
-    <div class="history-item">
-      <div class="flex items-center gap-2 mb-2 flex-wrap">
-        ${badge(h.priority)} <span class="badge info capitalize">${h.intent}</span> ${badge(h.risk)}
-      </div>
-      <div class="text-xs text-zinc-400 line-clamp-3">${escapeHtml(h.snippet)}…</div>
-      <div class="text-[10px] text-zinc-600 mt-2">${new Date(h.ts).toLocaleString()}</div>
-    </div>
-  `).join("");
-}
-
-$("clearHistoryBtn").onclick = () => {
-  localStorage.removeItem(HISTORY_KEY);
-  renderHistory();
-  showToast("History cleared.", "info");
-};
-
-/* -------------------- Bind & init -------------------- */
+/* -------------------- Bindings -------------------- */
 analyzeBtn.onclick = () => {
   const text = emailInput.value.trim();
   if (!text) {
     emailInput.focus();
-    emailInput.classList.add("border-red-500");
-    setTimeout(() => emailInput.classList.remove("border-red-500"), 800);
     showToast("Please paste an email first.", "error");
     return;
   }
-  const result = analyze(text);
-  render(result);
+  runSimulatedPipeline(text);
 };
 
-// Re-render reply when tone changes (without re-running heavy analysis if results visible)
 toneSelect.onchange = () => {
   if (!resultsWrap.classList.contains("hidden")) {
     const text = emailInput.value.trim();
     if (text) render(analyze(text));
   }
 };
-
-renderHistory();
-
-/* -------------------- Sanity Check (dev) -------------------- */
-// Runs on load — safe to keep in production; only logs to console.
-(() => {
-  console.log("=== Smart Inbox Coach Sanity Check ===");
-
-  // 1. Check required DOM elements
-  const required = ["#emailInput", "#analyzeBtn", "#replyOutput", "#resultsWrap"];
-  required.forEach(sel => {
-    if (!document.querySelector(sel) && sel !== "#replyOutput") {
-      // replyOutput is rendered dynamically; skip it
-      console.warn(`Missing element: ${sel}`);
-    }
-  });
-
-  // 2. Test analyze with a static sample
-  const sample = "Urgent: I need a refund immediately!";
-  const results = analyze(sample);
-  console.log("Analyze result:", results);
-
-  // 3. Test Gemini key fetch
-  loadGeminiKey()
-    .then(key => key ? console.log("Gemini key loaded ✅") : console.warn("Gemini key not found — set it in ⚙️ AI Settings or serve via HTTP."))
-    .catch(console.error);
-
-  console.log("Sanity check complete ✅");
-})();

@@ -1,158 +1,189 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg: #09090b;
-  --card: #111114;
-  --border: #27272a;
-  --muted: #a1a1aa;
+  --bg: #09090b; /* zinc-950 */
+  --panel: #111114; /* zinc-900 custom */
+  --border: #27272a; /* zinc-800 */
+  --muted: #a1a1aa; /* zinc-400 */
   --indigo: #6366f1;
-  --fuchsia: #ec4899;
 }
 
-/* ---- Base ---- */
 body {
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: #f4f4f5; /* zinc-100 */
 }
 
-/* ---- Card ---- */
-.card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0)) , #111114;
+/* ---- Panels (Enterprise Card Style) ---- */
+.panel {
+  background-color: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 8px; /* Sharper, modern corners */
   padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
-.card h4 {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+.section-title {
+  font-size: 11px;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
-/* ---- KPI strip ---- */
-.kpi {
-  border-radius: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  background: #111114;
-  display: flex; flex-direction: column; gap: 6px;
+/* ---- Hierarchy KPI Cards ---- */
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
-.kpi .label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.kpi .value { font-size: 22px; font-weight: 700; }
+.kpi-card .label { 
+  font-size: 11px; 
+  text-transform: uppercase; 
+  color: var(--muted); 
+  letter-spacing: 0.05em;
+}
+.kpi-card .value { 
+  font-size: 20px; 
+  font-weight: 600; 
+  letter-spacing: -0.02em;
+}
 
 /* ---- Badges ---- */
 .badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid var(--border); background: #18181b;
-}
-.badge.high   { background: #3f1d1d; border-color: #7f1d1d; color: #fecaca; }
-.badge.medium { background: #3a2e10; border-color: #854d0e; color: #fde68a; }
-.badge.low    { background: #0f2a1a; border-color: #166534; color: #bbf7d0; }
-.badge.info   { background: #1e1b4b; border-color: #4338ca; color: #c7d2fe; }
-
-/* ---- Score bars ---- */
-.bar { height: 8px; border-radius: 999px; background: #27272a; overflow: hidden; }
-.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6366f1, #ec4899); transition: width .4s ease; }
-
-/* ---- Signal chips ---- */
-.signal {
-  display: inline-block; margin: 2px; padding: 3px 8px; border-radius: 8px;
-  background: #18181b; border: 1px solid #27272a; font-size: 12px; color: #d4d4d8;
-}
-
-/* ---- Reply box ---- */
-.reply-box {
-  background: #0a0a0a; border: 1px solid #27272a; border-radius: 12px;
-  padding: 14px; white-space: pre-wrap; font-size: 14px; line-height: 1.6;
-  min-height: 80px;
-}
-
-/* ---- History ---- */
-.history-item {
-  background: #111114; border: 1px solid #27272a; border-radius: 14px; padding: 14px;
-  cursor: pointer; transition: transform .12s ease, border-color .12s ease;
-}
-.history-item:hover { transform: translateY(-1px); border-color: #3f3f46; }
-
-/* ---- Auto-highlight ---- */
-mark.hl {
-  background: rgba(99,102,241,0.25);
-  color: #c7d2fe;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  padding: 3px 8px;
   border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.deterministic-badge {
+  background: rgba(39, 39, 42, 0.5); /* zinc-800 */
+  border: 1px solid #3f3f46; /* zinc-700 */
+  color: #d4d4d8; /* zinc-300 */
+}
+.ai-badge {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #818cf8; /* indigo-400 */
+}
+
+/* Severity coloring for KPI values */
+.val-high   { color: #f87171; } /* red-400 */
+.val-medium { color: #fbbf24; } /* amber-400 */
+.val-low    { color: #4ade80; } /* green-400 */
+
+/* ---- Signal Highlight Chips ---- */
+.signal {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(39, 39, 42, 0.6);
+  border: 1px solid #3f3f46;
+  font-size: 11px;
+  color: #e4e4e7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.signal span { color: #71717a; } /* weight styling */
+
+/* ---- Auto-highlight inside email preview ---- */
+mark.hl {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border-radius: 2px;
   padding: 0 2px;
-  font-style: normal;
 }
 
-/* ---- Email preview (inside <details>) ---- */
-.email-preview {
-  background: #0a0a0a;
+/* ---- Score Bars ---- */
+.bar-wrap { 
+  height: 4px; 
+  border-radius: 2px; 
+  background: #27272a; 
+  overflow: hidden; 
+  width: 100%;
+}
+.bar-fill { 
+  height: 100%; 
+  background: #6366f1; 
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); 
+}
+
+/* ---- Pipeline Visualization ---- */
+.pipeline-track {
+  margin: 10px 0;
+}
+.pipeline-node {
+  font-size: 10px;
+  color: #71717a; /* zinc-500 */
+  background: #09090b;
   border: 1px solid #27272a;
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 13px;
-  white-space: pre-wrap;
-  line-height: 1.7;
-  color: #d4d4d8;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-/* ---- Skeleton loader ---- */
-.skeleton-line {
-  height: 13px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #1e1e21 25%, #2a2a2e 50%, #1e1e21 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-/* ---- Refine progress bar ---- */
-.refine-progress-bar {
-  height: 4px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: #27272a;
-  overflow: hidden;
+  z-index: 1;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  letter-spacing: 0.03em;
 }
-.refine-progress-bar > div {
-  height: 100%;
-  background: linear-gradient(90deg, #6366f1, #ec4899);
-  transition: width .3s ease;
-  width: 0%;
+.pipeline-node.active {
+  color: #818cf8;
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+.pipeline-node.done {
+  color: #a1a1aa;
+  border-color: #3f3f46;
 }
 
-/* ---- Toast ---- */
+/* ---- Animations ---- */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ---- Toast Notification ---- */
 #toast {
   position: fixed;
-  bottom: 28px;
-  right: 28px;
+  bottom: 24px;
+  right: 24px;
   z-index: 9999;
-  padding: 10px 18px;
-  border-radius: 12px;
-  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  transform: translateY(16px);
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: #e4e4e7;
+  transform: translateY(20px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity .22s ease, transform .22s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 #toast.show {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
-#toast.toast-success { background: #14532d; border: 1px solid #166534; color: #bbf7d0; }
-#toast.toast-info    { background: #1e1b4b; border: 1px solid #3730a3; color: #c7d2fe; }
-#toast.toast-error   { background: #3f1d1d; border: 1px solid #7f1d1d; color: #fecaca; }
+#toast.toast-success { border-left: 3px solid #10b981; }
+#toast.toast-info    { border-left: 3px solid #6366f1; }
+#toast.toast-error   { border-left: 3px solid #ef4444; }
 
-/* ---- Refine button loading state ---- */
-.refine-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+/* Remove default details marker and style custom one */
+details > summary::-webkit-details-marker {
+  display: none;
 }

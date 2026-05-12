@@ -7,41 +7,39 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen font-sans antialiased">
 
-  <header class="border-b border-zinc-800/80 backdrop-blur sticky top-0 bg-zinc-950/70 z-10">
-    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+  <header class="border-b border-zinc-800/80 backdrop-blur-md sticky top-0 bg-zinc-950/70 z-10">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 grid place-items-center font-bold">SC</div>
+        <div class="w-8 h-8 rounded-md bg-zinc-100 text-zinc-950 grid place-items-center font-bold text-sm tracking-tighter">SC</div>
         <div>
-          <h1 class="text-lg font-semibold leading-tight">Smart Inbox Coach</h1>
-          <p class="text-xs text-zinc-400 leading-tight">AI-assisted email triage for small teams</p>
+          <h1 class="text-[15px] font-medium leading-tight">Smart Inbox Coach</h1>
+          <p class="text-[12px] text-zinc-400 leading-tight">Explainable AI Triage</p>
         </div>
       </div>
-      <div class="flex items-center gap-2">
-        <button id="settingsBtn" class="text-xs px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">⚙️ AI Settings</button>
-        <a href="README.md" class="text-xs px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">📄 README</a>
+      <div class="flex items-center gap-3">
+        <button id="settingsBtn" class="text-xs px-3 py-1.5 rounded-md bg-transparent border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors">AI Settings</button>
       </div>
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto px-6 py-10">
-
-    <section class="mb-8">
-      <h2 class="text-3xl md:text-4xl font-bold tracking-tight">Triage any email in seconds.</h2>
-      <p class="text-zinc-400 mt-2 max-w-2xl">
-        Paste an email. Get priority, intent, risk, recommended SLA, reasoning signals, and a ready-to-send draft.
-        Classification is <span class="text-indigo-300">deterministic and explainable</span>; the LLM is only used to polish tone.
+  <main class="max-w-5xl mx-auto px-6 py-12">
+    
+    <section class="mb-10 text-center max-w-2xl mx-auto">
+      <h2 class="text-3xl font-semibold tracking-tight text-zinc-100">Intelligent Inbox Triage</h2>
+      <p class="text-sm text-zinc-400 mt-3 leading-relaxed">
+        An explainable AI-assisted triage and response workflow system. Deterministic classification ensures reliability, while optional LLMs handle tonal polish.
       </p>
     </section>
 
-    <!-- Input card -->
-    <section class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+    <!-- Input section -->
+    <section class="panel mb-8">
       <div class="flex items-center justify-between mb-3">
-        <label class="text-sm text-zinc-400">Incoming email</label>
+        <label class="text-xs font-medium uppercase tracking-wider text-zinc-500">Incoming Communication</label>
         <div class="flex items-center gap-2">
-          <select id="sampleSelect" class="text-xs bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5">
-            <option value="">Load sample…</option>
+          <select id="sampleSelect" class="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1 outline-none focus:border-zinc-500 text-zinc-300">
+            <option value="">Load sample scenario…</option>
             <option value="complaint">Angry customer / refund</option>
             <option value="support">Bug report</option>
             <option value="sales">Sales / pricing</option>
@@ -49,22 +47,26 @@
             <option value="payment">Invoice / payment</option>
             <option value="legal">Legal threat</option>
           </select>
-          <button id="clearBtn" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800">Clear</button>
+          <button id="clearBtn" class="text-xs text-zinc-500 hover:text-zinc-300 px-1">Clear</button>
         </div>
       </div>
+      
       <textarea id="emailInput"
-        placeholder="Subject: ...&#10;&#10;Hi team, ..."
-        class="w-full h-48 p-4 rounded-xl bg-zinc-950 border border-zinc-800 outline-none focus:border-indigo-500/60 text-sm resize-y"></textarea>
+        placeholder="Paste customer email here..."
+        class="w-full h-40 p-4 rounded-lg bg-zinc-950/50 border border-zinc-800/80 outline-none focus:border-zinc-500 text-sm resize-y leading-relaxed text-zinc-200 placeholder-zinc-700"></textarea>
 
-      <div class="flex flex-wrap items-center gap-3 mt-4">
-        <button id="analyzeBtn"
-          class="bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white px-5 py-2.5 rounded-xl font-semibold hover:opacity-95 active:scale-[0.98] transition">
-          ⚡ Analyze Email
-        </button>
-
-        <div class="flex items-center gap-2 ml-auto text-xs text-zinc-400">
-          <span>Reply tone:</span>
-          <select id="toneSelect" class="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5">
+      <div class="flex flex-wrap items-center justify-between mt-4">
+        <div class="flex items-center gap-3">
+          <button id="analyzeBtn"
+            class="bg-zinc-100 text-zinc-950 px-5 py-2 rounded-md text-sm font-medium hover:bg-white active:scale-[0.98] transition-all shadow-sm">
+            Run Analysis
+          </button>
+          <span class="badge deterministic-badge">Deterministic Engine</span>
+        </div>
+        
+        <div class="flex items-center gap-2 text-xs text-zinc-500">
+          <span>Target Tone:</span>
+          <select id="toneSelect" class="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 outline-none text-zinc-300">
             <option value="professional">Professional</option>
             <option value="empathetic">Empathetic</option>
             <option value="concise">Concise</option>
@@ -73,51 +75,190 @@
       </div>
     </section>
 
-    <!-- Results -->
-    <section id="resultsWrap" class="mt-8 hidden">
-      <!-- KPI strip -->
-      <div id="kpiStrip" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
-
-      <!-- Detail grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
-        <div class="lg:col-span-2 space-y-5">
-          <div id="explainCard" class="card"></div>
-          <div id="replyCard" class="card"></div>
-        </div>
-        <div class="space-y-5">
-          <div id="actionCard" class="card"></div>
-          <div id="scoresCard" class="card"></div>
-        </div>
+    <!-- Processing Pipeline Visualization (Hidden by default) -->
+    <section id="pipelineWrap" class="panel hidden mb-8 border-indigo-900/30 bg-indigo-950/5">
+      <div class="flex items-center justify-between text-xs text-zinc-500 mb-4">
+        <span class="uppercase tracking-wider font-medium text-indigo-400">Processing Pipeline</span>
+        <span id="pipelineStatusText" class="text-zinc-400">Initializing...</span>
+      </div>
+      <div class="flex justify-between items-center relative pipeline-track">
+        <!-- Connecting line -->
+        <div class="absolute top-1/2 left-0 w-full h-[1px] bg-zinc-800 -z-10 -translate-y-1/2"></div>
+        <div id="pipelineProgress" class="absolute top-1/2 left-0 h-[1px] bg-indigo-500 -z-10 -translate-y-1/2 transition-all duration-500 ease-out" style="width: 0%"></div>
+        
+        <!-- Nodes -->
+        <div class="pipeline-node" id="node-input">Input</div>
+        <div class="pipeline-node" id="node-intent">Intent Scoring</div>
+        <div class="pipeline-node" id="node-risk">Risk Detection</div>
+        <div class="pipeline-node" id="node-sla">SLA Rules</div>
+        <div class="pipeline-node" id="node-draft">Draft Generation</div>
       </div>
     </section>
 
-    <!-- History -->
-    <section class="mt-12">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm uppercase tracking-wider text-zinc-400">Recent triage</h3>
-        <button id="clearHistoryBtn" class="text-xs text-zinc-500 hover:text-zinc-300">Clear history</button>
+    <!-- Results Section -->
+    <section id="resultsWrap" class="hidden animate-fade-in-up">
+      
+      <!-- System Confidence Header -->
+      <div class="mb-6 panel py-4 bg-zinc-900/40">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-medium">System Confidence</h3>
+            <span id="confidenceVal" class="text-sm font-bold text-indigo-400">0%</span>
+          </div>
+          <span class="badge deterministic-badge">Deterministic</span>
+        </div>
+        <div class="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden mb-2">
+          <div id="confidenceBar" class="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded-full transition-all duration-1000" style="width: 0%"></div>
+        </div>
+        <p class="text-[11px] text-zinc-500">Confidence is based on signal strength, word-boundary matching, and classification consistency.</p>
       </div>
-      <div id="historyList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+
+      <!-- Top Row: Core Hierarchy -->
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        <div class="panel kpi-card">
+          <span class="label">Priority</span>
+          <div id="kpiPriority" class="value mt-1">-</div>
+        </div>
+        <div class="panel kpi-card">
+          <span class="label">Risk Level</span>
+          <div id="kpiRisk" class="value mt-1">-</div>
+        </div>
+        <div class="panel kpi-card">
+          <span class="label">Primary Intent</span>
+          <div id="kpiIntent" class="value mt-1 capitalize">-</div>
+        </div>
+      </div>
+
+      <!-- Middle Row: Action & SLA -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div class="panel md:col-span-1 flex flex-col justify-center">
+          <h4 class="section-title">Recommended SLA</h4>
+          <p id="slaText" class="text-lg font-medium text-zinc-200 mt-1">-</p>
+        </div>
+        <div class="panel md:col-span-2">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="section-title !mb-0">Suggested Action</h4>
+            <span id="sentimentText" class="text-[10px] uppercase tracking-wider text-zinc-500 bg-zinc-900 px-2 py-0.5 rounded">Sentiment: -</span>
+          </div>
+          <p id="actionText" class="text-sm text-zinc-300 leading-relaxed">-</p>
+        </div>
+      </div>
+
+      <!-- Draft Reply -->
+      <div class="panel mb-4">
+        <div class="flex items-center justify-between mb-3 border-b border-zinc-800/50 pb-3">
+          <div class="flex items-center gap-2">
+            <h4 class="section-title !mb-0">Suggested Draft Reply</h4>
+            <span class="badge ai-badge" id="replyBadge">Standard Template</span>
+          </div>
+          <div class="flex gap-2">
+            <button id="copyReplyBtn" class="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors">Copy</button>
+            <button id="refineBtn" class="text-xs px-3 py-1.5 rounded bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors flex items-center gap-1.5">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+              Refine with AI
+            </button>
+          </div>
+        </div>
+        
+        <div id="refineProgressWrap" class="hidden mb-3">
+          <div class="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div id="refineProgress" class="h-full bg-indigo-400 transition-all duration-300" style="width:0%"></div>
+          </div>
+        </div>
+        
+        <div id="replyBox" class="text-sm text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-lg border border-zinc-800/50 min-h-[100px] whitespace-pre-wrap"></div>
+        <p id="refineStatus" class="text-[11px] text-zinc-500 mt-2 text-right empty:hidden"></p>
+      </div>
+
+      <!-- Bottom Row: Explainability & Roadmap -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        
+        <!-- Classification Details -->
+        <details class="panel group cursor-pointer">
+          <summary class="text-xs font-medium uppercase tracking-wider text-zinc-400 outline-none list-none flex justify-between items-center">
+            Classification Engine Details
+            <span class="text-zinc-600 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div class="mt-4 pt-4 border-t border-zinc-800/50">
+            <div class="mb-4">
+              <h5 class="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Detected Signals (Word-Boundary Matched)</h5>
+              <div id="signalsContainer" class="flex flex-wrap gap-1.5"></div>
+              <p class="text-[10px] text-zinc-500 mt-2 italic">Note: Word-boundary matching prevents accidental triggers from partial keyword matches.</p>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <h5 class="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Intent Normalization</h5>
+                <div id="intentScoresContainer" class="space-y-1.5"></div>
+              </div>
+              <div>
+                <h5 class="text-[11px] text-zinc-500 uppercase tracking-wider mb-2">Secondary Lexicons</h5>
+                <div class="flex flex-col gap-2">
+                  <div class="flex justify-between items-center text-xs bg-zinc-900/50 px-2 py-1 rounded">
+                    <span class="text-zinc-400">Urgency Score</span>
+                    <span id="urgencyScoreText" class="text-zinc-200 font-mono">0</span>
+                  </div>
+                  <div class="flex justify-between items-center text-xs bg-zinc-900/50 px-2 py-1 rounded">
+                    <span class="text-zinc-400">Risk Score</span>
+                    <span id="riskScoreText" class="text-zinc-200 font-mono">0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <details class="mt-4">
+              <summary class="text-[11px] text-zinc-500 hover:text-zinc-300 outline-none list-none flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                View highlighted email source
+              </summary>
+              <div id="emailPreviewBox" class="mt-2 text-xs text-zinc-400 bg-zinc-950 p-3 rounded border border-zinc-800 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed"></div>
+            </details>
+          </div>
+        </details>
+
+        <!-- Model Roadmap -->
+        <div class="panel flex flex-col">
+          <h4 class="section-title">Model Roadmap</h4>
+          <ul class="text-xs text-zinc-400 space-y-2.5 mt-2 flex-1">
+            <li class="flex items-start gap-2">
+              <span class="text-zinc-600 mt-0.5">▪</span>
+              <span>Embeddings-based semantic retrieval</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-zinc-600 mt-0.5">▪</span>
+              <span>Multilingual support for global triage</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-zinc-600 mt-0.5">▪</span>
+              <span>Historical reply ranking</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-zinc-600 mt-0.5">▪</span>
+              <span>Human-in-the-loop feedback learning</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
     </section>
 
-    <footer class="mt-16 text-center text-xs text-zinc-500">
-      Built for the SA Intellect Solutions take-home assignment ·
-      Rule-based classification + optional LLM polish · v1.0
+    <footer class="mt-16 text-center text-[11px] text-zinc-500 border-t border-zinc-800/50 pt-6">
+      <p>Designed for small support and operations teams that need transparent, explainable AI-assisted inbox triage.</p>
     </footer>
   </main>
 
   <!-- Settings modal -->
-  <div id="settingsModal" class="hidden fixed inset-0 bg-black/70 z-20 grid place-items-center p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
-      <h3 class="font-semibold mb-2">AI Refinement (optional)</h3>
-      <p class="text-xs text-zinc-400 mb-4">
-        Paste a Gemini API key to enable "Refine with AI". It's stored only in your browser (localStorage).
-        Without a key, the app still works fully using the deterministic engine.
+  <div id="settingsModal" class="hidden fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 grid place-items-center p-4 transition-opacity">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+      <h3 class="text-sm font-medium mb-1">AI Generative Polish</h3>
+      <p class="text-[11px] text-zinc-400 mb-4 leading-relaxed">
+        Paste a Gemini API key to enable "Refine with AI". The core deterministic triage engine runs locally and does not require this key.
       </p>
-      <input id="apiKeyInput" type="password" placeholder="AIza..." class="w-full p-3 rounded-lg bg-zinc-950 border border-zinc-800 outline-none text-sm" />
-      <div class="flex justify-end gap-2 mt-4">
-        <button id="closeSettings" class="text-xs px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700">Cancel</button>
-        <button id="saveSettings" class="text-xs px-3 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400">Save</button>
+      <input id="apiKeyInput" type="password" placeholder="AIza..." class="w-full p-2.5 rounded bg-zinc-950 border border-zinc-800 outline-none focus:border-zinc-500 text-sm mb-4 transition-colors" />
+      <div class="flex justify-end gap-2">
+        <button id="closeSettings" class="text-xs px-3 py-1.5 rounded bg-transparent hover:bg-zinc-800 text-zinc-400 transition-colors">Cancel</button>
+        <button id="saveSettings" class="text-xs px-3 py-1.5 rounded bg-zinc-100 text-zinc-900 hover:bg-white font-medium transition-colors">Save Key</button>
       </div>
     </div>
   </div>
