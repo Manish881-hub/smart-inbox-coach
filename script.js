@@ -1,0 +1,407 @@
+/* =========================================================
+   Smart Inbox Coach — script.js
+   Deterministic rule engine + optional LLM polish.
+   ========================================================= */
+
+/* -------------------- DOM refs -------------------- */
+const $ = (id) => document.getElementById(id);
+const emailInput   = $("emailInput");
+const analyzeBtn   = $("analyzeBtn");
+const clearBtn     = $("clearBtn");
+const sampleSelect = $("sampleSelect");
+const toneSelect   = $("toneSelect");
+const resultsWrap  = $("resultsWrap");
+const kpiStrip     = $("kpiStrip");
+const explainCard  = $("explainCard");
+const replyCard    = $("replyCard");
+const actionCard   = $("actionCard");
+const scoresCard   = $("scoresCard");
+const historyList  = $("historyList");
+
+/* -------------------- Settings (Gemini key) -------------------- */
+const settingsBtn   = $("settingsBtn");
+const settingsModal = $("settingsModal");
+const apiKeyInput   = $("apiKeyInput");
+const saveSettings  = $("saveSettings");
+const closeSettings = $("closeSettings");
+
+settingsBtn.onclick = () => {
+  apiKeyInput.value = localStorage.getItem("gemini_key") || "";
+  settingsModal.classList.remove("hidden");
+};
+closeSettings.onclick = () => settingsModal.classList.add("hidden");
+saveSettings.onclick  = () => {
+  localStorage.setItem("gemini_key", apiKeyInput.value.trim());
+  settingsModal.classList.add("hidden");
+};
+
+/* -------------------- Lexicons (weighted) --------------------
+   Weights are deliberate: "refund" matters more than "help".
+   This is the core design choice that makes the system "smart".
+*/
+const INTENT_LEXICON = {
+  support:   [["bug",3],["error",3],["not working",3],["broken",3],["issue",2],["problem",2],["crash",3],["help",1],["stuck",2],["fix",2]],
+  sales:     [["pricing",3],["quote",3],["demo",3],["purchase",3],["buy",2],["plan",1],["upgrade",2],["trial",2],["interested in",2]],
+  payment:   [["invoice",3],["payment",3],["billing",3],["refund",3],["charge",2],["receipt",2],["overcharged",3],["transaction",2]],
+  meeting:   [["schedule",3],["meeting",3],["call",2],["zoom",2],["calendar",2],["availability",3],["reschedule",3],["appointment",2]],
+  complaint: [["disappointed",3],["angry",3],["unacceptable",3],["worst",3],["terrible",3],["frustrated",3],["complain",3],["awful",2],["rude",2]],
+};
+
+const URGENCY_WORDS = [
+  ["asap",4],["urgent",4],["immediately",4],["right away",4],["emergency",5],
+  ["today",2],["end of day",2],["eod",2],["by tomorrow",2],["deadline",3],["soon",1],
+];
+
+const RISK_WORDS = [
+  ["refund",3],["cancel",3],["chargeback",4],["lawyer",5],["legal",4],["lawsuit",5],
+  ["sue",5],["consumer court",5],["escalate",3],["never again",2],["formal complaint",4],
+  ["report you",3],["press charges",5],
+];
+
+const POSITIVE_WORDS = ["thanks","thank you","appreciate","great","love","awesome","glad","kindly","please"];
+const NEGATIVE_WORDS = ["disappointed","angry","bad","worst","hate","terrible","awful","frustrated","unacceptable","ridiculous"];
+
+/* -------------------- Samples -------------------- */
+const SAMPLES = {
+  complaint: `Subject: Refund still not processed — extremely disappointed\n\nHi team,\n\nI am extremely disappointed with your service. I requested a refund last week and still have not received any update. This is unacceptable. Please resolve this immediately or I will escalate to my bank for a chargeback.\n\n— Priya`,
+  support:   `Subject: Dashboard crashes when exporting CSV\n\nHi,\n\nEvery time I try to export a CSV from the analytics dashboard the page crashes and I get a 500 error. This started yesterday. Could you please help fix this soon? It's blocking my team.\n\nThanks,\nRahul`,
+  sales:     `Subject: Pricing for 50-seat plan\n\nHello,\n\nWe're evaluating your product for our 50-person ops team. Could you share pricing, a demo slot this week, and whether annual billing has a discount? Looking to decide by Friday.\n\nBest,\nAnita (Head of Ops)`,
+  meeting:   `Subject: Quick call tomorrow?\n\nHi,\n\nCan we schedule a 20-minute Zoom tomorrow to align on the onboarding flow? I'm flexible after 3pm IST. Please share a calendar invite.\n\nThanks,\nKevin`,
+  payment:   `Subject: Invoice INV-2034 — double charge?\n\nHi finance team,\n\nIt looks like invoice INV-2034 was charged twice on my card this month. Could you please check and refund the duplicate transaction? Receipt attached.\n\nRegards,\nMeera`,
+  legal:     `Subject: Formal notice\n\nThis email serves as a formal complaint. If the refund is not processed within 48 hours, I will be forced to involve my lawyer and file a case in consumer court. Consider this your final warning.\n\n— A. Sharma`,
+};
+
+sampleSelect.onchange = () => {
+  if (SAMPLES[sampleSelect.value]) {
+    emailInput.value = SAMPLES[sampleSelect.value];
+  }
+  sampleSelect.value = "";
+};
+clearBtn.onclick = () => { emailInput.value = ""; resultsWrap.classList.add("hidden"); };
+
+/* -------------------- Core engine -------------------- */
+
+// Word-boundary safe matcher; counts occurrences for scoring.
+function countMatches(text, phrase) {
+  // Escape regex specials, then match as a phrase (allowing word boundary at edges).
+  const esc = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re  = new RegExp(`(^|\\b|\\s)${esc}(\\b|\\s|$)`, "gi");
+  return (text.match(re) || []).length;
+}
+
+function scoreCategory(text, lexicon) {
+  let score = 0;
+  const hits = [];
+  for (const [phrase, weight] of lexicon) {
+    const n = countMatches(text, phrase);
+    if (n > 0) {
+      score += n * weight;
+      hits.push({ phrase, weight, count: n });
+    }
+  }
+  return { score, hits };
+}
+
+// Softmax-style normalization → makes the confidence feel like ML.
+function normalize(scores) {
+  const total = Object.values(scores).reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+  const out = {};
+  for (const k in scores) out[k] = scores[k] / total;
+  return out;
+}
+
+function analyze(rawText) {
+  const text = (rawText || "").toLowerCase();
+
+  // 1) Intent scoring per category
+  const perCategory = {};
+  const perCategoryHits = {};
+  for (const intent in INTENT_LEXICON) {
+    const { score, hits } = scoreCategory(text, INTENT_LEXICON[intent]);
+    perCategory[intent] = score;
+    perCategoryHits[intent] = hits;
+  }
+
+  const norm = normalize(perCategory);
+  let topIntent = "general inquiry";
+  let confidence = 35; // baseline for "general"
+  if (norm) {
+    topIntent = Object.entries(norm).sort((a,b)=>b[1]-a[1])[0][0];
+    // Confidence: base 60 + share of top intent * 40, capped at 97
+    confidence = Math.min(97, Math.round(60 + norm[topIntent] * 40));
+    if (perCategory[topIntent] < 2) confidence = Math.max(45, confidence - 15); // weak evidence penalty
+  }
+
+  // 2) Urgency
+  const urgency = scoreCategory(text, URGENCY_WORDS);
+  let priority = "Low";
+  if (urgency.score >= 4) priority = "High";
+  else if (urgency.score >= 2) priority = "Medium";
+
+  // 3) Risk
+  const risk = scoreCategory(text, RISK_WORDS);
+  let riskLevel = "Low";
+  if (risk.score >= 5) riskLevel = "High";
+  else if (risk.score >= 2) riskLevel = "Medium";
+
+  // 4) Sentiment proxy
+  let pos = 0, neg = 0;
+  for (const w of POSITIVE_WORDS) pos += countMatches(text, w);
+  for (const w of NEGATIVE_WORDS) neg += countMatches(text, w);
+  const sentiment =
+    neg > pos + 1 ? "Negative" :
+    pos > neg + 1 ? "Positive" : "Neutral";
+
+  // If sentiment strongly negative, escalate complaint signal even without keywords
+  if (sentiment === "Negative" && topIntent === "general inquiry") {
+    topIntent = "complaint";
+    confidence = Math.max(confidence, 65);
+  }
+
+  // 5) SLA matrix (priority × risk)
+  const sla = recommendSLA(priority, riskLevel);
+
+  // 6) Next action
+  const nextAction = recommendAction(topIntent, priority, riskLevel);
+
+  // 7) Reason signals (deduped, sorted by weight)
+  const signals = [];
+  (perCategoryHits[topIntent] || []).forEach(h => signals.push({ ...h, kind: "intent" }));
+  urgency.hits.forEach(h => signals.push({ ...h, kind: "urgency" }));
+  risk.hits.forEach(h => signals.push({ ...h, kind: "risk" }));
+  signals.sort((a,b) => b.weight - a.weight);
+
+  return {
+    text: rawText,
+    topIntent, confidence,
+    priority, riskLevel, sentiment,
+    sla, nextAction,
+    signals,
+    scores: { intentScores: perCategory, normalized: norm || {}, urgency: urgency.score, risk: risk.score },
+  };
+}
+
+function recommendSLA(priority, risk) {
+  if (priority === "High" || risk === "High") return "Within 1–2 hours";
+  if (priority === "Medium" || risk === "Medium") return "Within the same business day";
+  return "Within 24 hours";
+}
+
+function recommendAction(intent, priority, risk) {
+  if (risk === "High") return "🚨 Escalate to a senior agent and acknowledge within 1 hour.";
+  if (intent === "complaint") return "Acknowledge empathetically, then investigate and follow up.";
+  if (intent === "payment")   return "Route to Finance with the invoice/transaction reference.";
+  if (intent === "sales")     return "Send pricing + book a demo slot.";
+  if (intent === "support")   return "Open a ticket, reproduce the issue, share an ETA.";
+  if (intent === "meeting")   return "Share 2–3 calendar slots that fit the requester's window.";
+  if (priority === "High")    return "Respond within 1–2 hours with a clear next step.";
+  return "Respond normally with a confirmation and timeline.";
+}
+
+/* -------------------- Reply generator (template + tone) -------------------- */
+function generateReply(result) {
+  const tone = toneSelect.value;
+  const intent = result.topIntent;
+
+  const openings = {
+    professional: "Thank you for reaching out.",
+    empathetic:   "Thank you for taking the time to write in — I truly understand how frustrating this must feel.",
+    concise:      "Thanks for the note.",
+  };
+
+  const intentBody = {
+    support:   "We've logged the issue and our engineering team is looking into it. I'll keep you updated as soon as we have a fix or an ETA.",
+    sales:     "I'd be glad to share pricing details and walk you through a quick demo. Could you share a couple of time slots that work this week?",
+    payment:   "I've forwarded this to our finance team. They will verify the transaction and revert with confirmation shortly.",
+    meeting:   "Happy to set up a call. Could you share two or three time windows that work for you? I'll send a calendar invite right away.",
+    complaint: "I'm sorry about the experience you've had — this isn't the standard we aim for. I'm personally looking into it and will get back to you with a concrete update.",
+    "general inquiry": "We've received your message and will get back to you with the right next step shortly.",
+  };
+
+  const slaLine = `Expected response time: ${result.sla}.`;
+  const closings = {
+    professional: "Best regards,\nSupport Team",
+    empathetic:   "Thank you for your patience and for giving us the chance to make this right.\n\nWarm regards,\nSupport Team",
+    concise:      "— Support",
+  };
+
+  return [
+    openings[tone],
+    intentBody[intent] || intentBody["general inquiry"],
+    result.priority === "High" ? slaLine : null,
+    closings[tone],
+  ].filter(Boolean).join("\n\n");
+}
+
+/* -------------------- Rendering -------------------- */
+function badge(level) {
+  const cls = level.toLowerCase();
+  return `<span class="badge ${cls}">${level}</span>`;
+}
+
+function render(result) {
+  resultsWrap.classList.remove("hidden");
+
+  // KPI strip
+  kpiStrip.innerHTML = `
+    <div class="kpi"><span class="label">Priority</span><span class="value">${badge(result.priority)}</span></div>
+    <div class="kpi"><span class="label">Intent</span><span class="value capitalize">${result.topIntent}</span></div>
+    <div class="kpi"><span class="label">Risk</span><span class="value">${badge(result.riskLevel)}</span></div>
+    <div class="kpi"><span class="label">Suggested SLA</span><span class="value text-base">${result.sla}</span></div>
+  `;
+
+  // Action card
+  actionCard.innerHTML = `
+    <h4>Suggested next action</h4>
+    <p class="text-sm leading-relaxed">${result.nextAction}</p>
+    <div class="mt-4 text-xs text-zinc-400">Sentiment: <span class="text-zinc-200">${result.sentiment}</span></div>
+  `;
+
+  // Explain card — this is the killer feature for interviewers
+  const signalChips = result.signals.length
+    ? result.signals.map(s =>
+        `<span class="signal" title="weight ${s.weight}, ${s.kind}">${escapeHtml(s.phrase)} <span class="text-zinc-500">·${s.weight}</span></span>`
+      ).join(" ")
+    : `<span class="text-zinc-500 text-sm">No strong signals — defaulting to general inquiry.</span>`;
+
+  explainCard.innerHTML = `
+    <h4>Why this verdict — reasoning signals</h4>
+    <div>${signalChips}</div>
+    <div class="mt-5">
+      <div class="flex items-center justify-between text-xs text-zinc-400 mb-1">
+        <span>Intent confidence</span><span>${result.confidence}%</span>
+      </div>
+      <div class="bar"><span style="width:${result.confidence}%"></span></div>
+    </div>
+    <p class="text-xs text-zinc-500 mt-4 leading-relaxed">
+      Classification uses a weighted keyword engine with word-boundary matching and softmax-style normalization
+      across intent categories. Urgency and risk are scored on independent lexicons so they can co-occur with any intent.
+    </p>
+  `;
+
+  // Scores breakdown
+  const breakdown = Object.entries(result.scores.intentScores)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v]) => {
+      const pct = result.scores.normalized[k] ? Math.round(result.scores.normalized[k]*100) : 0;
+      return `
+        <div class="mb-2">
+          <div class="flex justify-between text-xs"><span class="capitalize">${k}</span><span class="text-zinc-400">${v} pts · ${pct}%</span></div>
+          <div class="bar mt-1"><span style="width:${pct}%"></span></div>
+        </div>`;
+    }).join("");
+  scoresCard.innerHTML = `
+    <h4>Intent score breakdown</h4>
+    ${breakdown}
+    <div class="text-xs text-zinc-500 mt-3">Urgency score: ${result.scores.urgency} · Risk score: ${result.scores.risk}</div>
+  `;
+
+  // Reply card
+  const draft = generateReply(result);
+  replyCard.innerHTML = `
+    <div class="flex items-center justify-between">
+      <h4 class="!mb-0">Suggested draft reply</h4>
+      <div class="flex gap-2">
+        <button id="copyReplyBtn" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700">📋 Copy</button>
+        <button id="refineBtn"    class="text-xs px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400">✨ Refine with AI</button>
+      </div>
+    </div>
+    <div id="replyBox" class="reply-box mt-3">${escapeHtml(draft)}</div>
+    <p id="refineStatus" class="text-xs text-zinc-500 mt-2"></p>
+  `;
+
+  document.getElementById("copyReplyBtn").onclick = () => {
+    navigator.clipboard.writeText(document.getElementById("replyBox").innerText);
+    document.getElementById("copyReplyBtn").innerText = "✅ Copied";
+    setTimeout(()=>document.getElementById("copyReplyBtn").innerText = "📋 Copy", 1500);
+  };
+  document.getElementById("refineBtn").onclick = () => refineWithAI(result);
+
+  saveToHistory(result);
+  renderHistory();
+}
+
+function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+
+/* -------------------- LLM polish (optional) -------------------- */
+async function refineWithAI(result) {
+  const key = localStorage.getItem("gemini_key");
+  const status = document.getElementById("refineStatus");
+  if (!key) {
+    status.innerHTML = `No Gemini key set. Open <b>⚙️ AI Settings</b> to add one. The deterministic draft above is fully usable on its own.`;
+    return;
+  }
+  status.textContent = "Refining with Gemini…";
+
+  const draft = document.getElementById("replyBox").innerText;
+  const prompt = `You are an assistant for a customer-support team. Rewrite the draft reply below to sound natural, warm, and professional. Keep it concise (max 6 sentences). Do NOT invent facts. Keep the same intent and commitments.\n\nOriginal email context (do not quote):\n${result.text}\n\nDraft reply to improve:\n${draft}\n\nReturn ONLY the improved reply text.`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    const data = await res.json();
+    const improved = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (improved) {
+      document.getElementById("replyBox").innerText = improved;
+      status.textContent = "✨ Refined with Gemini.";
+    } else {
+      status.textContent = "Gemini returned no content. Showing original draft.";
+    }
+  } catch (e) {
+    status.textContent = "AI refinement failed (network or key). Original draft is still valid.";
+  }
+}
+
+/* -------------------- History (localStorage) -------------------- */
+const HISTORY_KEY = "sic_history";
+
+function saveToHistory(result) {
+  const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  arr.unshift({
+    ts: Date.now(),
+    snippet: (result.text || "").slice(0, 90),
+    priority: result.priority, intent: result.topIntent, risk: result.riskLevel,
+  });
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0, 12)));
+}
+
+function renderHistory() {
+  const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  if (!arr.length) { historyList.innerHTML = `<div class="text-xs text-zinc-500">No history yet — analyze your first email above.</div>`; return; }
+  historyList.innerHTML = arr.map(h => `
+    <div class="history-item">
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        ${badge(h.priority)} <span class="badge info capitalize">${h.intent}</span> ${badge(h.risk)}
+      </div>
+      <div class="text-xs text-zinc-400 line-clamp-3">${escapeHtml(h.snippet)}…</div>
+      <div class="text-[10px] text-zinc-600 mt-2">${new Date(h.ts).toLocaleString()}</div>
+    </div>
+  `).join("");
+}
+
+$("clearHistoryBtn").onclick = () => { localStorage.removeItem(HISTORY_KEY); renderHistory(); };
+
+/* -------------------- Bind & init -------------------- */
+analyzeBtn.onclick = () => {
+  const text = emailInput.value.trim();
+  if (!text) { emailInput.focus(); emailInput.classList.add("border-red-500"); setTimeout(()=>emailInput.classList.remove("border-red-500"),800); return; }
+  const result = analyze(text);
+  render(result);
+};
+
+// Re-render reply when tone changes (without re-running heavy analysis if results visible)
+toneSelect.onchange = () => {
+  if (!resultsWrap.classList.contains("hidden")) {
+    const text = emailInput.value.trim();
+    if (text) render(analyze(text));
+  }
+};
+
+renderHistory();
