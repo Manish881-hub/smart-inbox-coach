@@ -354,12 +354,13 @@ function render(result) {
    LLM Polish — Gemini model fallback list
    Tries each model in order until one responds successfully.
    ========================================================= */
-// Ordered by recency — tries newest stable first.
-// gemini-1.5-pro removed: deprecated for generateContent.
+// Confirmed available via /v1beta/models for this key (2026-05-12).
+// Ordered: newest → stable fallback.
 const GEMINI_MODELS = [
-  "gemini-2.0-flash-001",  // preferred stable
+  "gemini-2.5-flash",      // newest, confirmed available
+  "gemini-2.0-flash-001",  // stable 2.0
   "gemini-2.0-flash",      // alias
-  "gemini-1.5-flash-001",  // stable Flash 1.5
+  "gemini-1.5-flash-001",  // stable 1.5
   "gemini-1.5-flash",      // fallback
 ];
 
@@ -389,6 +390,10 @@ async function callGemini(key, prompt) {
 
       if (!res.ok) {
         const errMsg = data?.error?.message || `HTTP ${res.status}`;
+        if (res.status === 429) {
+          // Rate limited — no point trying other models right now
+          throw new Error(`Rate limit hit (429). Wait ~60 seconds and try again. (${model})`);
+        }
         console.warn(`[Gemini] ${model} → ${res.status}: ${errMsg}`);
         lastError = `${model}: ${errMsg}`;
         continue;
