@@ -70,15 +70,21 @@ saveSettings.onclick  = () => {
 };
 
 async function loadGeminiKey() {
+  // 1. Try .gemini.env (requires HTTP server)
   try {
     const res = await fetch("/.gemini.env");
     if (res.ok) {
       const text = await res.text();
       const match = text.match(/GEMINI_API_KEY=(.*)/);
-      if (match) return match[1].trim();
+      if (match && match[1].trim().startsWith("AIza")) {
+        return match[1].trim();
+      }
     }
   } catch (_) { }
-  return localStorage.getItem("gemini_key") || null;
+
+  // 2. Try both localStorage key names (handle different setup conventions)
+  const key = localStorage.getItem("gemini_key") || localStorage.getItem("geminiApiKey");
+  return (key && key.startsWith("AIza")) ? key : null;
 }
 
 /* -------------------- Lexicons -------------------- */
@@ -344,6 +350,67 @@ function render(result) {
   $("refineBtn").onclick = () => refineWithAI(result);
 }
 
+/* =========================================================
+   LLM Polish — Gemini model fallback list
+   Tries each model in order until one responds successfully.
+   ========================================================= */
+// Ordered by recency — tries newest stable first.
+// gemini-1.5-pro removed: deprecated for generateContent.
+const GEMINI_MODELS = [
+  "gemini-2.0-flash-001",  // preferred stable
+  "gemini-2.0-flash",      // alias
+  "gemini-1.5-flash-001",  // stable Flash 1.5
+  "gemini-1.5-flash",      // fallback
+];
+
+/**
+ * Tries each model in GEMINI_MODELS until one succeeds.
+ * Returns { text, modelUsed } or throws with details.
+ */
+async function callGemini(key, prompt) {
+  // Guard: key must look valid before we even hit the network
+  if (!key || !key.startsWith("AIza")) {
+    throw new Error("Invalid API key format. Key must start with 'AIza'.");
+  }
+
+  const ENDPOINT = (model) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+
+  let lastError = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      console.log(`[Gemini] Trying model: ${model}`);
+      const res = await fetch(ENDPOINT(model), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errMsg = data?.error?.message || `HTTP ${res.status}`;
+        console.warn(`[Gemini] ${model} → ${res.status}: ${errMsg}`);
+        lastError = `${model}: ${errMsg}`;
+        continue;
+      }
+
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (!text) {
+        console.warn(`[Gemini] ${model} → empty candidates/content.`);
+        lastError = `${model}: empty response`;
+        continue;
+      }
+
+      console.log(`[Gemini] ✅ Success with model: ${model}`);
+      return { text, modelUsed: model };
+    } catch (e) {
+      console.warn(`[Gemini] ${model} → network error: ${e.message}`);
+      lastError = `${model}: ${e.message}`;
+    }
+  }
+  throw new Error(`All Gemini models failed. Last error: ${lastError}`);
+}
+
 /* -------------------- LLM Polish -------------------- */
 async function refineWithAI(result) {
   const status = $("refineStatus");
@@ -353,36 +420,33 @@ async function refineWithAI(result) {
 
   const key = await loadGeminiKey();
   if (!key) {
-    showToast("No Gemini key found. Please configure in settings.", "error");
+    status.textContent = "⚠ No Gemini key found. Open ⚙ AI Settings to add one.";
+    showToast("No Gemini key found. Configure in AI Settings.", "error");
     return;
   }
 
   btn.disabled = true;
+  status.textContent = "Contacting Gemini API…";
   wrap.classList.remove("hidden");
   bar.style.width = "0%";
-  
-  let pct = 0;
-  const iv = setInterval(() => { pct = Math.min(85, pct + Math.random()*10); bar.style.width = `${pct}%`; }, 200);
 
-  const draft = result._lastDraft || replyBox.innerText;
-  const prompt = `Rewrite this draft reply to sound natural, professional, and concise. Do NOT invent facts.\n\nOriginal email:\n${result.text}\n\nDraft:\n${draft}`;
+  let pct = 0;
+  const iv = setInterval(() => { pct = Math.min(85, pct + Math.random() * 10); bar.style.width = `${pct}%`; }, 200);
+
+  const draft = replyBox.innerText;
+  const prompt = `Rewrite this draft reply to sound natural, professional, and concise (max 6 sentences). Do NOT invent facts.\n\nOriginal email:\n${result.text}\n\nDraft to improve:\n${draft}\n\nReturn ONLY the improved reply text.`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${encodeURIComponent(key)}`,
-      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-    );
-    const data = await res.json();
-    const improved = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (improved) {
-      replyBox.innerText = improved;
-      replyBadge.className = "badge ai-badge";
-      replyBadge.textContent = "AI-Enhanced Reply";
-      status.textContent = "✨ Refined with Gemini 1.5 Flash";
-      showToast("Reply refined with AI!", "success");
-    }
+    const { text: improved, modelUsed } = await callGemini(key, prompt);
+    replyBox.innerText = improved;
+    replyBadge.className = "badge ai-badge";
+    replyBadge.textContent = "AI-Enhanced Reply";
+    status.textContent = `✨ Refined with ${modelUsed}`;
+    showToast(`AI refinement done via ${modelUsed}`, "success");
   } catch (e) {
-    showToast("Refinement failed. Using deterministic draft.", "error");
+    console.error("[Gemini] All models failed:", e);
+    status.textContent = `⚠ ${e.message}`;
+    showToast("Refinement failed — check DevTools console for details.", "error");
   } finally {
     clearInterval(iv);
     bar.style.width = "100%";
@@ -446,3 +510,66 @@ toneSelect.onchange = () => {
     if (text) render(analyze(text));
   }
 };
+/* =========================================================
+   Diagnostic: Step-by-step component verification.
+   Run in DevTools console: verifyComponents()
+   ========================================================= */
+window.verifyComponents = async function() {
+  console.group("=== Smart Inbox Coach — Component Verification ===");
+
+  // Step 1: Check HTTP vs file://
+  const isHttp = location.protocol === "http:" || location.protocol === "https:";
+  console.log(`[1] Protocol check: ${location.protocol} — ${ isHttp ? "✅ OK (served via HTTP)" : "❌ FAIL — Open http://localhost:8080, not file://" }`);
+
+  // Step 2: Verify .gemini.env is reachable
+  try {
+    const envRes = await fetch("/.gemini.env");
+    if (envRes.ok) {
+      const txt = await envRes.text();
+      const hasKey = /GEMINI_API_KEY=AIza/.test(txt);
+      console.log(`[2] .gemini.env fetch: ✅ 200 — key present: ${hasKey ? "✅ Yes" : "❌ No — check your key starts with AIza..."}`);
+    } else {
+      console.warn(`[2] .gemini.env fetch: ❌ HTTP ${envRes.status} — is the Python server running?`);
+    }
+  } catch(e) {
+    console.warn(`[2] .gemini.env fetch: ❌ Network error — ${e.message}`);
+  }
+
+  // Step 3: Check DOM elements
+  const required = ["emailInput", "analyzeBtn", "resultsWrap", "replyBox", "toast"];
+  required.forEach(id => {
+    const el = document.getElementById(id);
+    console.log(`[3] DOM #${id}: ${ el ? "✅ Found" : "❌ MISSING" }`);
+  });
+
+  // Step 4: Run analyze() smoke test
+  const sample = "Urgent: I need a refund immediately!";
+  try {
+    const result = analyze(sample);
+    console.log(`[4] analyze() smoke test: ✅ intent=${result.topIntent}, priority=${result.priority}, confidence=${result.confidence}%`);
+  } catch(e) {
+    console.error(`[4] analyze() smoke test: ❌ ${e.message}`);
+  }
+
+  // Step 5: Gemini key & model test
+  const key = await loadGeminiKey();
+  if (!key) {
+    console.warn("[5] Gemini key: ❌ Not found — paste key in .gemini.env or AI Settings.");
+  } else {
+    console.log(`[5] Gemini key: ✅ Found (starts with: ${key.slice(0,8)}...)`);
+    console.log("[5] Testing Gemini model fallback...");
+    try {
+      const { text, modelUsed } = await callGemini(key, "Reply in one word: hello");
+      console.log(`[5] Gemini API: ✅ Success — model: ${modelUsed}, response: ${text.slice(0,40)}`);
+    } catch(e) {
+      console.error(`[5] Gemini API: ❌ All models failed — ${e.message}`);
+      console.info("   → Check: key validity, Gemini API enabled in Google Cloud Console, quota.");
+    }
+  }
+
+  console.groupEnd();
+  console.info("✅ Verification complete. Fix any ❌ items above.");
+};
+
+console.info("%c Smart Inbox Coach loaded. Run verifyComponents() in this console to check all systems.",
+  "background:#6366f1;color:#fff;padding:3px 8px;border-radius:4px;font-weight:600");
