@@ -1,14 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   --bg: #09090b;
   --card: #111114;
   --border: #27272a;
   --muted: #a1a1aa;
+  --indigo: #6366f1;
+  --fuchsia: #ec4899;
 }
 
-body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+/* ---- Base ---- */
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
 
+/* ---- Card ---- */
 .card {
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)) , #111114;
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0)) , #111114;
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 20px;
@@ -22,6 +30,7 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
   margin-bottom: 12px;
 }
 
+/* ---- KPI strip ---- */
 .kpi {
   border-radius: 16px;
   padding: 16px 18px;
@@ -32,6 +41,7 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
 .kpi .label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .kpi .value { font-size: 22px; font-weight: 700; }
 
+/* ---- Badges ---- */
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; padding: 4px 10px; border-radius: 999px;
@@ -42,21 +52,107 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
 .badge.low    { background: #0f2a1a; border-color: #166534; color: #bbf7d0; }
 .badge.info   { background: #1e1b4b; border-color: #4338ca; color: #c7d2fe; }
 
+/* ---- Score bars ---- */
 .bar { height: 8px; border-radius: 999px; background: #27272a; overflow: hidden; }
-.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6366f1, #ec4899); }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #6366f1, #ec4899); transition: width .4s ease; }
 
+/* ---- Signal chips ---- */
 .signal {
   display: inline-block; margin: 2px; padding: 3px 8px; border-radius: 8px;
   background: #18181b; border: 1px solid #27272a; font-size: 12px; color: #d4d4d8;
 }
 
+/* ---- Reply box ---- */
 .reply-box {
   background: #0a0a0a; border: 1px solid #27272a; border-radius: 12px;
   padding: 14px; white-space: pre-wrap; font-size: 14px; line-height: 1.6;
+  min-height: 80px;
 }
 
+/* ---- History ---- */
 .history-item {
   background: #111114; border: 1px solid #27272a; border-radius: 14px; padding: 14px;
   cursor: pointer; transition: transform .12s ease, border-color .12s ease;
 }
 .history-item:hover { transform: translateY(-1px); border-color: #3f3f46; }
+
+/* ---- Auto-highlight ---- */
+mark.hl {
+  background: rgba(99,102,241,0.25);
+  color: #c7d2fe;
+  border-radius: 4px;
+  padding: 0 2px;
+  font-style: normal;
+}
+
+/* ---- Email preview (inside <details>) ---- */
+.email-preview {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #d4d4d8;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ---- Skeleton loader ---- */
+.skeleton-line {
+  height: 13px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #1e1e21 25%, #2a2a2e 50%, #1e1e21 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- Refine progress bar ---- */
+.refine-progress-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: #27272a;
+  overflow: hidden;
+}
+.refine-progress-bar > div {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #ec4899);
+  transition: width .3s ease;
+  width: 0%;
+}
+
+/* ---- Toast ---- */
+#toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 9999;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  transform: translateY(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease, transform .22s ease;
+}
+#toast.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+#toast.toast-success { background: #14532d; border: 1px solid #166534; color: #bbf7d0; }
+#toast.toast-info    { background: #1e1b4b; border: 1px solid #3730a3; color: #c7d2fe; }
+#toast.toast-error   { background: #3f1d1d; border: 1px solid #7f1d1d; color: #fecaca; }
+
+/* ---- Refine button loading state ---- */
+.refine-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
