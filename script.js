@@ -354,14 +354,15 @@ function render(result) {
    LLM Polish — Gemini model fallback list
    Tries each model in order until one responds successfully.
    ========================================================= */
-// Confirmed available via /v1beta/models for this key (2026-05-12).
-// Ordered: newest → stable fallback.
+// Confirmed working via live API test (2026-05-12) with this key.
+// Ordered: newest → stable → alias fallbacks.
 const GEMINI_MODELS = [
-  "gemini-2.5-flash",      // newest, confirmed available
-  "gemini-2.0-flash-001",  // stable 2.0
+  "gemini-2.5-flash",      // ✅ confirmed: newest
+  "gemini-2.0-flash-001",  // ✅ confirmed: stable 2.0
   "gemini-2.0-flash",      // alias
+  "gemini-flash-latest",   // ✅ confirmed: rolling alias
   "gemini-1.5-flash-001",  // stable 1.5
-  "gemini-1.5-flash",      // fallback
+  "gemini-1.5-flash",      // last resort
 ];
 
 /**
